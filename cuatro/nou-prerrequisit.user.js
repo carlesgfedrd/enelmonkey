@@ -1759,6 +1759,7 @@
             { label: 'ESTUDI - CLIENT', write: 'ESTUDI - CLIENT', key: 'ESTUDI_CLIENT' },
             { label: 'ESTUDI - EXE', write: 'ESTUDI - EXE', key: 'ESTUDI_EXE' },
             { label: 'ESTUDI - SO', write: 'ESTUDI - SO', key: 'ESTUDI_SO' },
+            { label: 'ESTUDI - PLANOL', write: 'ESTUDI - PLANOL', key: 'ESTUDI_PLANOL' },
         ];
 
         async function resetFields(level = 4) {
