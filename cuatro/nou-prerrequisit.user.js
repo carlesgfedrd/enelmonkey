@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         NEW-Pre-requisito
 // @namespace    https://accesosede.my.salesforce.com/
-// @version      1.6.2
+// @version      1.6.3
 // @description  solucionar cambio de (VERSIÓ 14) PROCEDIMENT PREREQUISITS
 // @match        https://*.lightning.force.com/*
 // @match        https://*.my.salesforce.com/*
-// @author       Jiatai + Carles + GPT
+// @author       Jiatai + Carles + GPT + Adria
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
