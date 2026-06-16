@@ -5,15 +5,13 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Carles Garcia Floriach (carles.garcia@enel.com)
-// @version        1.1
-// @require        //https://code.jquery.com/jquery-latest.js
-// @grant          GM_addStyle
-// @grant          GM_getResourceText
+// @version        1.2
+// @run-at         document-idle
 // ==/UserScript==
 
 (function() {
     let debounceTimeout = null;
-    const DEBOUNCE_DELAY = 10;
+    const DEBOUNCE_DELAY = 300;
 
     const observer = new MutationObserver(() => {
         clearTimeout(debounceTimeout);
@@ -22,6 +20,7 @@
             tablaEstudios();
             tablaDocumentosEstado();
             tablaDocumentosNombre();
+            highlightAddressPin();
             //expedienteNNSS();
             //expedienteSAT();
 
@@ -180,5 +179,47 @@
             results.push(query.snapshotItem(i));
         }
         return results;
+    }
+
+    function highlightAddressPin() {
+        const titlePs = getElementsByXPath("//p[@title = 'Descripción del expediente']");
+
+        const titleP = titlePs[0];
+        const container = titleP.closest('div');
+        if (!container) return;
+
+        let addrNode = container.querySelector('lightning-formatted-text') || container.querySelector('p.fieldComponent') || titleP.nextElementSibling;
+        if (!addrNode) return;
+
+        let address = addrNode.innerText.trim();
+        if (!address) return;
+
+        address = address.replace('CL ', 'Calle ')
+            .replace('PS ', 'Paseo ')
+            .replace('RB ', 'Rambla ')
+            .replace('UR ', 'Urbanización ')
+            .replace('PJ ', 'Pasaje ')
+            .replace('PZ ', 'Plaza ')
+            .replace('CR ', 'Carretera')
+            .replace('AV ', 'Avenida ')
+            .replace('Suelo', ' ');
+
+        // evita duplicados
+        if (titleP.querySelector('.enel-pin-icon')) return;
+
+        const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address);
+        const a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.className = 'enel-pin-icon';
+        a.setAttribute('title', 'Abrir en Google Maps');
+        a.style.marginLeft = '6px';
+        a.style.cursor = 'pointer';
+        a.style.display = 'inline-block';
+        a.style.verticalAlign = 'middle';
+        a.style.color = '#d22';
+        a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="red" stroke="red"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"></path><circle cx="12" cy="9" r="2" fill="white"/></svg>';
+
+        titleP.appendChild(a);
     }
 })();
