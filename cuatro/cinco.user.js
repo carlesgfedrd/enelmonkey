@@ -5,13 +5,12 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Carles Garcia Floriach (carles.garcia@enel.com)
-// @version        1.2
-// @run-at         document-idle
+// @version        1.2.1
 // ==/UserScript==
 
 (function() {
     let debounceTimeout = null;
-    const DEBOUNCE_DELAY = 300;
+    const DEBOUNCE_DELAY = 50;
 
     const observer = new MutationObserver(() => {
         clearTimeout(debounceTimeout);
@@ -202,6 +201,7 @@
             .replace('PZ ', 'Plaza ')
             .replace('CR ', 'Carretera')
             .replace('AV ', 'Avenida ')
+            .replace('Variante ', ' ')
             .replace('Suelo', ' ');
 
         // evita duplicados
