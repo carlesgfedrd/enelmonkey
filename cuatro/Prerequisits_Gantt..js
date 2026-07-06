@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.7.1
+// @version        0.8.0
 // ==/UserScript==
 
 (function() {
