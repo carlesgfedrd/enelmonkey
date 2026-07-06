@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.7
+// @version        0.7.1
 // ==/UserScript==
 
 (function() {
@@ -229,7 +229,8 @@
 
         const maxNombre = Math.max(...datos.map(item => item.nombre.length)); // Obtenim la longitud màxima del nom dels prerequisits per determinar l'ample de la columna de noms
         const anchoNombre = Math.max(80, maxNombre * 8);    // Calculem l'ample de la columna de noms (mínim 80 píxels, 8 píxels per caràcter)
-        const html = `  // Creem el codi HTML per mostrar el Gantt a la pàgina
+                        // Creem el codi HTML del Gantt amb la capçalera i les files corresponents
+        const html = `
 
     <!DOCTYPE html>
 
