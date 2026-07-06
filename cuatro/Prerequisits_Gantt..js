@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.8.5
+// @version        0.8.6
 // ==/UserScript==
 
 (function() {
@@ -217,11 +217,11 @@
                             background:${color};
                         "
                         title="
-                        Inicio: ${item.inicio}
+                        Inici: ${item.inicio}
                         Prevista: ${item.prevista}
-                        Duración planificada: ${diasPlanificats} dias
+                        Duració planificada: ${diasPlanificats} dia/s
                         Real: ${item.realFin || 'Pendent'}
-                        Duración real: ${diasReals ? diasReals + ' dias' : 'Pendent'}
+                        Duració real: ${diasReals ? diasReals + ' dia/s' : 'Pendent'}
                         "
                     ></div>
 
