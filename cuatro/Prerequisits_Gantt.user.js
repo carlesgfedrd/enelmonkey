@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.8.9
+// @version        0.9.0
 // ==/UserScript==
 
 (function() {
@@ -144,7 +144,7 @@
 
         if (i % SaltoFecha === 0) {     // Si el dia actual és un múltiple del salt de dates, mostrem la data a la capçalera
 
-            if (SaltoFecha >= 90) { // Si el salt de dates és de 90 dies o més, mostrem només el mes i l'any
+            if (totalDias >= 330) { // Si el salt de dates és de 90 dies o més, mostrem només el mes i l'any
                 textoFecha = `${dia}/${mes}/${any}`;
             } else {
                 textoFecha = `${dia}/${mes}`;
@@ -199,7 +199,7 @@
 
             if (!ini || !prevista) return;  // Si no tenim una data d'inici o una data prevista de finalització, continuem amb la següent iteració
 
-            const offset = Math.floor((ini - minFecha) / 86400000);
+            const offset = Math.floor((ini - minFecha) / 86400000); // Calculem l'offset del prerequisit respecte a la data mínima del Gantt en dies
             //const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
             const fechaFin = real || hoy    // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data actual
             const duracion = Math.max( 1, Math.ceil((fechaFin - ini) / 86400000) + 1); // Calculem la duració del prerequisit en dies (mínim 1 dia) i sumem 1 per incloure el dia d'inici i el dia de finalització
@@ -349,20 +349,20 @@
 
         const url = window.location.href;   // Obtenim la URL actual de la pàgina
 
-        if (!url.includes("/Prerequisites__r/") || !url.includes("/view")) {    // Si la URL no conté "/Prerequisites__r/" o "/view", sortim de la funció
+        if (!url.includes("/Prerequisites__r/View")) {    // Si la URL no conté "/Prerequisites__r/View", sortim de la funció
             return;
         }
 
-        const datos = obtenerDatosGantt();
+        const datos = obtenerDatosGantt();  // Obtenim les dades del Gantt de la taula de prerequisits
         if (!datos.length) return;
 
-        const signature = getGanttSignature(datos);
+        const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
         if (signature === lastGanttSignature) {
             return;
         }
 
-        lastGanttSignature = signature;
-        mostrarGantt(datos);
+        lastGanttSignature = signature; // Actualitzem la signatura de les dades del Gantt per a la propera comparació
+        mostrarGantt(datos);    // Mostrem el Gantt amb les dades obtingudes
     }
 
     function getElementsByXPath(xpath, parent) {
