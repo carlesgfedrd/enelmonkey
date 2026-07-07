@@ -129,7 +129,7 @@
 
         if (i % SaltoFecha === 0) {     // Si el dia actual és un múltiple del salt de dates, mostrem la data a la capçalera
 
-            if (SaltoFecha >= 90) {
+            if (SaltoFecha >= 90) { // Si el salt de dates és de 90 dies o més, mostrem només el mes i l'any
                 textoFecha = `${mes}/${any}`;
             } else {
                 textoFecha = `${dia}/${mes}`;
