@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.8.7.5
+// @version        0.8.8
 // ==/UserScript==
 
 (function() {
@@ -73,17 +73,25 @@
 
     function mostrarGantt() {   // Funció per mostrar el Gantt a la pàgina
 
-        const ANCHO_MAXIMO = window.innerWidth - 300;   // Ample màxim del Gantt (amplada de la finestra menys 300 píxels)
         const hoy = new Date();                         // Obtenim la data actual
         const datos = obtenerDatosGantt();              // Obtenim les dades del Gantt
         let minFecha = null;                            // Variable per emmagatzemar la data mínima del Gantt
         let maxFecha = null;                            // Variable per emmagatzemar la data màxima del Gantt
         let textoFecha = "";                            // Variable per emmagatzemar el text de la data que es mostrarà a la capçalera del Gantt
 
+        const maxNombre = Math.max(...datos.map(item => item.nombre.length)); // Obtenim la longitud màxima del nom dels prerequisits
+        const anchoNombre = Math.max(80, maxNombre * 8);    // Calculem l'ample de la columna de noms
+        const margenLateral = 60;                          // Marges totals (padding esquerra+dreta + espai dret extra)
+
+        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table'); // Obtenim la taula que conté el primer element th amb el títol "Nombre del Pre-requisito"
+        const contenedorWidth = tabla?.parentElement?.clientWidth || document.documentElement.clientWidth;  // Obtenim l'ample del contenidor de la taula o l'ample de la finestra si no trobem el contenidor
+        const anchoDisponible = Math.max(260, contenedorWidth - margenLateral - anchoNombre); // Ample disponible per al timeline
+
         datos.forEach(item => {                         // Iterem sobre cada prerequisit per determinar les dates mínimes i màximes del Gantt
 
             const ini = parseFechaES(item.inicio);          // Convertim la data d'inici del prerequisit a un objecte Date
-            const prevista = parseFechaES(item.prevista);   // Convertim la data prevista de finalització del prerequisit a un objecte Date
+            //const prevista = parseFechaES(item.prevista);   // Convertim la data prevista de finalització del prerequisit a un objecte Date
+            const prevista = hoy;
             const real = parseFechaES(item.realFin);        // Convertim la data real de finalització del prerequisit a un objecte Date
             const fin = real || prevista;                   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
 
@@ -109,8 +117,8 @@
             totalDias > 50 ? 3 :
             1;
 
-        //const pixDia = Math.max(0.45, Math.floor(ANCHO_MAXIMO / totalDias));
-        const pixDia = ANCHO_MAXIMO / totalDias;                                // Calculem el nombre de píxels per dia del Gantt
+        const hoyOffset = Math.floor((hoy - minFecha) / 86400000);
+        const pixDia = anchoDisponible / totalDias;                                // Calculem el nombre de píxels per dia del Gantt
 
                             // Creem la capçalera del Gantt amb les dates corresponents
         let cabeceraHtml = `    
@@ -130,7 +138,7 @@
         if (i % SaltoFecha === 0) {     // Si el dia actual és un múltiple del salt de dates, mostrem la data a la capçalera
 
             if (SaltoFecha >= 90) { // Si el salt de dates és de 90 dies o més, mostrem només el mes i l'any
-                textoFecha = `${dia}${mes}/${any}`;
+                textoFecha = `${dia}/${mes}/${any}`;
             } else {
                 textoFecha = `${dia}/${mes}`;
             }
@@ -153,9 +161,6 @@
         }
 
         if (hoy >= minFecha && hoy <= maxFecha) {   // Si la data actual està dins del rang de dates del Gantt, afegim una línia vermella a la capçalera per indicar la data actual
-
-            const hoyOffset =
-                Math.floor((hoy - minFecha)/86400000);  // Calculem l'offset de la data actual respecte a la data mínima del Gantt
                                 
             cabeceraHtml += ` 
                 <div
@@ -181,15 +186,15 @@
 
         datos.forEach(item => { // Iterem sobre cada prerequisit per crear les files del Gantt
 
-            const ini = parseFechaES(item.inicio);
+            const ini = parseFechaES(item.inicio);  // Convertim la data d'inici del prerequisit a un objecte Date
             const prevista = parseFechaES(item.prevista);
             const real = parseFechaES(item.realFin);
 
-            if (!ini || !prevista) return;
+            if (!ini || !prevista) return;  // Si no tenim una data d'inici o una data prevista de finalització, continuem amb la següent iteració
 
             const offset = Math.floor((ini - minFecha) / 86400000);
-            const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
-            //const fechaFin = real || hoyOffset
+            //const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
+            const fechaFin = real || hoy    // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data actual
             const duracion = Math.max( 1, Math.ceil((fechaFin - ini) / 86400000) + 1); // Calculem la duració del prerequisit en dies (mínim 1 dia) i sumem 1 per incloure el dia d'inici i el dia de finalització
             const diasPlanificats = Math.max( 1, Math.ceil((prevista - ini) / 86400000) + 1); // Calculem els dies planificats entre inici i prevista
             const diasReals = real ? Math.max( 1, Math.ceil((real - ini) / 86400000) + 1) : null; // Calculem els dies reals entre inici i data real de finalització (si existeix)
@@ -232,8 +237,6 @@
             `;
         });
 
-        const maxNombre = Math.max(...datos.map(item => item.nombre.length)); // Obtenim la longitud màxima del nom dels prerequisits per determinar l'ample de la columna de noms
-        const anchoNombre = Math.max(80, maxNombre * 8);    // Calculem l'ample de la columna de noms (mínim 80 píxels, 8 píxels per caràcter)
                         // Creem el codi HTML del Gantt amb la capçalera i les files corresponents
         const html = `
 
@@ -247,7 +250,15 @@
 
     body{
         font-family:Arial;
-        padding:20px 20px 20px 50px;
+        margin:0;
+        padding:0;
+    }
+
+    .ganttWrapper{
+        padding:20px;
+        width:100%;
+        max-width:100%;
+        box-sizing:border-box;
     }
 
     h2{
@@ -271,7 +282,7 @@
     .timeline{
         position:relative;
         height:26px;
-        width:${totalDias * pixDia}px;
+        width:${anchoDisponible}px;
         background:#f0f0f0;
     }
 
@@ -288,6 +299,8 @@
 
     <body>
 
+    <div class="ganttWrapper">
+
     <p>
     <h2>Diagrama Gantt</h2>
 
@@ -299,6 +312,8 @@
     ${cabeceraHtml}
     ${filasHtml}
 
+    </div>
+
     </body>
 
     </html>
@@ -307,9 +322,11 @@
     let contenedor = document.getElementById("ganttContainer"); // Obtenim l'element contenedor del Gantt si ja existeix
 
     if (!contenedor) {  // Si no existeix l'element contenedor, el creem i l'afegim a la pàgina
-        contenedor = document.createElement("div");
-        contenedor.id = "ganttContainer";
-        contenedor.style.marginTop = "20px";
+        contenedor = document.createElement("div"); // Creem un nou element div per contenir el Gantt
+        contenedor.id = "ganttContainer";   // Assignem un id a l'element contenedor per poder-lo identificar més endavant
+        contenedor.style.marginTop = "20px";    // Afegim un marge superior a l'element contenedor
+        contenedor.style.overflowX = "hidden";  // Afegim un desbordament horitzontal ocult a l'element contenedor per evitar que el Gantt es desbordi de la pàgina
+        contenedor.style.maxWidth = "100%"; // Afegim un ample màxim del 100% a l'element contenedor per evitar que el Gantt es desbordi de la pàgina
 
         const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest("table"); // Obtenim la taula que conté el primer element th amb el títol "Nombre del Pre-requisito"
 
