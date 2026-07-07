@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.8.7
+// @version        0.8.7.5
 // ==/UserScript==
 
 (function() {
@@ -188,8 +188,8 @@
             if (!ini || !prevista) return;
 
             const offset = Math.floor((ini - minFecha) / 86400000);
-            //const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
-            const fechaFin = real || hoyOffset
+            const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
+            //const fechaFin = real || hoyOffset
             const duracion = Math.max( 1, Math.ceil((fechaFin - ini) / 86400000) + 1); // Calculem la duració del prerequisit en dies (mínim 1 dia) i sumem 1 per incloure el dia d'inici i el dia de finalització
             const diasPlanificats = Math.max( 1, Math.ceil((prevista - ini) / 86400000) + 1); // Calculem els dies planificats entre inici i prevista
             const diasReals = real ? Math.max( 1, Math.ceil((real - ini) / 86400000) + 1) : null; // Calculem els dies reals entre inici i data real de finalització (si existeix)
