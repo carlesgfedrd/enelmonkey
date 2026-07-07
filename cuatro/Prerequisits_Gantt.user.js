@@ -10,6 +10,7 @@
 
 (function() {
     let debounceTimeout = null;
+    let lastGanttSignature = null;
     const DEBOUNCE_DELAY = 50;
 
     const observer = new MutationObserver(() => {
@@ -71,10 +72,16 @@
         );
     }
 
-    function mostrarGantt() {   // Funció per mostrar el Gantt a la pàgina
+    function getGanttSignature(datos) {
+        return datos
+            .map(item => `${item.nombre}|${item.inicio}|${item.prevista}|${item.realFin}`)
+            .join('||');
+    }
+
+    function mostrarGantt(datos) {   // Funció per mostrar el Gantt a la pàgina
+        datos = datos || obtenerDatosGantt();
 
         const hoy = new Date();                         // Obtenim la data actual
-        const datos = obtenerDatosGantt();              // Obtenim les dades del Gantt
         let minFecha = null;                            // Variable per emmagatzemar la data mínima del Gantt
         let maxFecha = null;                            // Variable per emmagatzemar la data màxima del Gantt
         let textoFecha = "";                            // Variable per emmagatzemar el text de la data que es mostrarà a la capçalera del Gantt
@@ -338,7 +345,7 @@
         contenedor.innerHTML = html;    // Afegim el codi HTML del Gantt a l'element contenedor
     }
 
-    function mostrarGanttUnaVez() { // Funció per mostrar el Gantt només si estem a la pàgina de prerequisits i no s'ha mostrat abans
+    function mostrarGanttUnaVez() { // Funció per mostrar el Gantt només si estem a la pàgina de prerequisits i la taula ha canviat
 
         const url = window.location.href;   // Obtenim la URL actual de la pàgina
 
@@ -346,11 +353,16 @@
             return;
         }
 
-        if (document.getElementById("ganttContainer")) {    // Si ja existeix l'element contenedor del Gantt, sortim de la funció
+        const datos = obtenerDatosGantt();
+        if (!datos.length) return;
+
+        const signature = getGanttSignature(datos);
+        if (signature === lastGanttSignature) {
             return;
         }
 
-        mostrarGantt(); // Mostrem el Gantt a la pàgina
+        lastGanttSignature = signature;
+        mostrarGantt(datos);
     }
 
     function getElementsByXPath(xpath, parent) {
