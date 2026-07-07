@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.0
+// @version        0.9.1
 // ==/UserScript==
 
 (function() {
@@ -349,7 +349,7 @@
 
         const url = window.location.href;   // Obtenim la URL actual de la pàgina
 
-        if (!url.includes("/Prerequisites__r/View")) {    // Si la URL no conté "/Prerequisites__r/View", sortim de la funció
+        if (!url.includes("/Prerequisites__r/view")) {    // Si la URL no conté "/Prerequisites__r/view", sortim de la funció 
             return;
         }
 
