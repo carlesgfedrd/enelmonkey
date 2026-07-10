@@ -5,24 +5,21 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.3
+// @version        0.9.4
 // ==/UserScript==
 
 (function() {
-    let debounceTimeout = null;
     let lastGanttSignature = null;
     let lastPageKey = null;
-    const DEBOUNCE_DELAY = 50;
+    const REFRESH_INTERVAL_MS = 1000;
 
-    const observer = new MutationObserver(() => {
-        clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(() => {
-            mostrarGanttUnaVez();
-        },
-        DEBOUNCE_DELAY);
+    const refreshTimer = setInterval(() => {
+        mostrarGanttUnaVez();
+    }, REFRESH_INTERVAL_MS);
+
+    window.addEventListener('beforeunload', () => {
+        clearInterval(refreshTimer);
     });
-
-    observer.observe(document.body, { childList: true, subtree: true });
 
     function obtenerDatosGantt() {  // Funció per obtenir les dades del Gantt de la taula de prerequisits
 
