@@ -5,12 +5,13 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.2
+// @version        0.9.3
 // ==/UserScript==
 
 (function() {
     let debounceTimeout = null;
     let lastGanttSignature = null;
+    let lastPageKey = null;
     const DEBOUNCE_DELAY = 50;
 
     const observer = new MutationObserver(() => {
@@ -76,6 +77,10 @@
         return datos
             .map(item => `${item.nombre}|${item.inicio}|${item.prevista}|${item.realFin}`)
             .join('||');
+    }
+
+    function getCurrentPageKey() {
+        return `${window.location.pathname}${window.location.search}${window.location.hash}`;
     }
 
     function mostrarGantt(datos) {   // Funció per mostrar el Gantt a la pàgina
@@ -348,21 +353,35 @@
     function mostrarGanttUnaVez() { // Funció per mostrar el Gantt només si estem a la pàgina de prerequisits i la taula ha canviat
 
         const url = window.location.href;   // Obtenim la URL actual de la pàgina
+        const pageKey = getCurrentPageKey();
 
-        //if (!url.includes("/Prerequisites__r/<view")) {    // Si la URL no conté "/Prerequisites__r/view", sortim de la funció 
         if (!url.includes("/Prerequisites__r/") || !url.includes("/view")) {
-
+            const contenedor = document.getElementById("ganttContainer");
+            if (contenedor) {
+                contenedor.remove();
+            }
+            lastPageKey = null;
+            lastGanttSignature = null;
             return;
         }
 
         const datos = obtenerDatosGantt();  // Obtenim les dades del Gantt de la taula de prerequisits
-        if (!datos.length) return;
-
-        const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
-        if (signature === lastGanttSignature) {
+        if (!datos.length) {
+            const contenedor = document.getElementById("ganttContainer");
+            if (contenedor) {
+                contenedor.remove();
+            }
+            lastPageKey = pageKey;
+            lastGanttSignature = null;
             return;
         }
 
+        const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
+        if (pageKey === lastPageKey && signature === lastGanttSignature) {
+            return;
+        }
+
+        lastPageKey = pageKey; // Actualitzem la clau de pàgina per a la propera comparació
         lastGanttSignature = signature; // Actualitzem la signatura de les dades del Gantt per a la propera comparació
         mostrarGantt(datos);    // Mostrem el Gantt amb les dades obtingudes
     }
