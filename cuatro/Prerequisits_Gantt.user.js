@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.4
+// @version        0.9.6
 // ==/UserScript==
 
 (function() {
@@ -70,6 +70,61 @@
         );
     }
 
+    function tieneSuperposicionEnGap(current, gapStart, gapEnd, datos) {    // Funció per comprovar si hi ha superposició entre el gap d'un prerequisit i altres prerequisits amb el mateix nom
+        const gapInicioMs = gapStart.getTime(); // Convertim la data d'inici del gap a mil·lisegons
+        const gapFinMs = gapEnd.getTime();  // Convertim la data de finalització del gap a mil·lisegons
+
+        for (const item of datos) { // Iterem sobre cada prerequisit per comprovar si hi ha superposició amb el gap del prerequisit actual
+            if (item === current) continue; // Si el prerequisit és el mateix que l'actual, continuem amb la següent iteració
+
+            const inicio = parseFechaES(item.inicio);   // Convertim la data d'inici del prerequisit a un objecte Date
+            const fin = parseFechaES(item.realFin) || parseFechaES(item.prevista);  // Convertim la data de finalització del prerequisit a un objecte Date (si no hi ha data real, utilitzem la data prevista)
+            if (!inicio || !fin) continue;  // Si no tenim una data d'inici o una data de finalització, continuem amb la següent iteració
+
+            const inicioMs = inicio.getTime();  // Convertim la data d'inici del prerequisit a mil·lisegons
+            const finMs = fin.getTime();    // Convertim la data de finalització del prerequisit a mil·lisegons
+
+            // Consideramos superposición si cualquier parte de item ocupa fechas dentro del gap.
+            if (inicioMs < gapFinMs && finMs > gapInicioMs) {   // Comprovem si hi ha superposició entre el prerequisit i el gap del prerequisit actual
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function calcularGaps(datos) {  // Funció per calcular els gaps entre prerequisits amb el mateix nom i dates d'inici i finalització
+        if (!datos || !datos.length) return datos;  // Si no tenim dades, retornem les dades tal qual
+
+        const ordenados = [...datos].sort((a, b) => {   // Ordenem les dades per nom i data d'inici
+            const nameComp = a.nombre.localeCompare(b.nombre, undefined, { sensitivity: 'base' });  // Compara els noms dels prerequisits sense tenir en compte majúscules/minúscules
+            if (nameComp !== 0) return nameComp;    // Si els noms són diferents, retornem el resultat de la comparació
+
+            const da = parseFechaES(a.inicio);  // Convertim la data d'inici del primer prerequisit a un objecte Date
+            const db = parseFechaES(b.inicio);  // Convertim la data d'inici del segon prerequisit a un objecte Date
+            return (da || 0) - (db || 0);   // Retornem la diferència entre les dates d'inici (si alguna és null, la considerem com a 0)
+        });
+
+        for (let i = 0; i < ordenados.length - 1; i++) {    // Iterem sobre les dades ordenades per comparar prerequisits amb el mateix nom i dates d'inici i finalització
+            const current = ordenados[i];   // Obtenim el prerequisit actual
+            const next = ordenados[i + 1];  // Obtenim el següent prerequisit
+
+            if (current.nombre === next.nombre && current.realFin) {    // Si els prerequisits tenen el mateix nom i el primer té una data real de finalització, calculem el gap entre ells
+                const fin = parseFechaES(current.realFin);  // Convertim la data real de finalització del primer prerequisit a un objecte Date
+                const inicioNext = parseFechaES(next.inicio);   // Convertim la data d'inici del següent prerequisit a un objecte Date
+
+                if (fin && inicioNext && inicioNext > fin) {    // Si la data d'inici del següent prerequisit és posterior a la data de finalització del primer, considerem que hi ha un gap entre ells
+                    if (!tieneSuperposicionEnGap(current, fin, inicioNext, datos)) {
+                        current.gapStart = fin;
+                        current.gapEnd = inicioNext;
+                    }
+                }
+            }
+        }
+
+        return datos;
+    }
+
     function getGanttSignature(datos) {
         return datos
             .map(item => `${item.nombre}|${item.inicio}|${item.prevista}|${item.realFin}`)
@@ -80,8 +135,49 @@
         return `${window.location.pathname}${window.location.search}${window.location.hash}`;
     }
 
+    function obtenerUrlProyecto() {
+        return window.location.href.replace(
+            "/related/Prerequisites__r/view",
+            "/view"
+        );
+    }
+
+    async function obtenerFechaEntregaCarpeta() {
+
+        const urlProyecto = obtenerUrlProyecto();
+
+        return new Promise((resolve, reject) => {
+
+            const iframe = document.createElement("iframe");
+
+            iframe.style.display = "none";
+            iframe.src = urlProyecto;
+
+            document.body.appendChild(iframe);
+
+            iframe.onload = () => {
+
+                try {
+
+                    console.log("Iframe cargado");
+
+                    resolve("OK");
+
+                } catch (e) {
+
+                    reject(e);
+
+                } finally {
+
+                    iframe.remove();
+                }
+            };
+        });
+    }
+
     function mostrarGantt(datos) {   // Funció per mostrar el Gantt a la pàgina
         datos = datos || obtenerDatosGantt();
+        datos = calcularGaps(datos);
 
         const hoy = new Date();                         // Obtenim la data actual
         let minFecha = null;                            // Variable per emmagatzemar la data mínima del Gantt
@@ -130,7 +226,7 @@
         const pixDia = anchoDisponible / totalDias;                                // Calculem el nombre de píxels per dia del Gantt
 
                             // Creem la capçalera del Gantt amb les dates corresponents
-        let cabeceraHtml = `    
+        let cabeceraHtml = `
         <div class="fila">
             <div class="nombre"></div>
             <div class="timeline">
@@ -170,8 +266,8 @@
         }
 
         if (hoy >= minFecha && hoy <= maxFecha) {   // Si la data actual està dins del rang de dates del Gantt, afegim una línia vermella a la capçalera per indicar la data actual
-                                
-            cabeceraHtml += ` 
+
+            cabeceraHtml += `
                 <div
                     style="
                         position:absolute;
@@ -202,11 +298,16 @@
             if (!ini || !prevista) return;  // Si no tenim una data d'inici o una data prevista de finalització, continuem amb la següent iteració
 
             const offset = Math.floor((ini - minFecha) / 86400000); // Calculem l'offset del prerequisit respecte a la data mínima del Gantt en dies
-            //const fechaFin = real || prevista   // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data prevista
             const fechaFin = real || hoy    // Si hi ha una data real de finalització, l'utilitzem; en cas contrari, utilitzem la data actual
             const duracion = Math.max( 1, Math.ceil((fechaFin - ini) / 86400000) + 1); // Calculem la duració del prerequisit en dies (mínim 1 dia) i sumem 1 per incloure el dia d'inici i el dia de finalització
             const diasPlanificats = Math.max( 1, Math.ceil((prevista - ini) / 86400000) + 1); // Calculem els dies planificats entre inici i prevista
             const diasReals = real ? Math.max( 1, Math.ceil((real - ini) / 86400000) + 1) : null; // Calculem els dies reals entre inici i data real de finalització (si existeix)
+
+            const gapStart = item.gapStart;
+            const gapEnd = item.gapEnd;
+            const gapOffset = gapStart ? Math.floor((gapStart - minFecha) / 86400000) : 0;
+            const gapWidth = gapStart && gapEnd ? Math.max(1, Math.ceil((gapEnd - gapStart) / 86400000) + 1) * pixDia : 0;
+            const gapDias = gapStart && gapEnd ? Math.round((gapEnd - gapStart) / 86400000) : 0;
 
             let color = "#e53935"
 
@@ -214,7 +315,7 @@
                 color = "#34a853"
             }
                             // Afegim un div amb la fila corresponent al prerequisit al Gantt
-            filasHtml += ` 
+            filasHtml += `
 
             <div class="fila">
 
@@ -224,8 +325,21 @@
 
                 <div class="timeline">
 
-                    <div    
-                        class="barra"   
+                    ${gapStart ? `
+                    <div
+                        class="barra gap"
+                        style="
+                            left:${gapOffset * pixDia}px;
+                            width:${gapWidth}px;
+                            background:#9e9e9e;
+                        "
+                        title="Hueco: ${gapStart.toLocaleDateString('es-ES')} - ${gapEnd.toLocaleDateString('es-ES')}
+                        (${gapDias} día${gapDias === 1 ? '' : 's'})"
+                    ></div>
+                    ` : ''}
+
+                    <div
+                        class="barra"
                         style="
                             left:${offset * pixDia}px;
                             width:${duracion * pixDia}px;
