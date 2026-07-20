@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.6
+// @version        0.9.9
 // ==/UserScript==
 
 (function() {
@@ -135,51 +135,13 @@
         return `${window.location.pathname}${window.location.search}${window.location.hash}`;
     }
 
-    function obtenerUrlProyecto() {
-        return window.location.href.replace(
-            "/related/Prerequisites__r/view",
-            "/view"
-        );
-    }
-
-    async function obtenerFechaEntregaCarpeta() {
-
-        const urlProyecto = obtenerUrlProyecto();
-
-        return new Promise((resolve, reject) => {
-
-            const iframe = document.createElement("iframe");
-
-            iframe.style.display = "none";
-            iframe.src = urlProyecto;
-
-            document.body.appendChild(iframe);
-
-            iframe.onload = () => {
-
-                try {
-
-                    console.log("Iframe cargado");
-
-                    resolve("OK");
-
-                } catch (e) {
-
-                    reject(e);
-
-                } finally {
-
-                    iframe.remove();
-                }
-            };
-        });
-    }
-
     function mostrarGantt(datos) {   // Funció per mostrar el Gantt a la pàgina
+
         datos = datos || obtenerDatosGantt();
         datos = calcularGaps(datos);
 
         const hoy = new Date();                         // Obtenim la data actual
+        const dataCOBRA = parseFechaES(window.CONTROL_PLAZOS_FECHA_EOBRA); // Obtenim la data d'entrega de la carpeta de obra des del cache global
         let minFecha = null;                            // Variable per emmagatzemar la data mínima del Gantt
         let maxFecha = null;                            // Variable per emmagatzemar la data màxima del Gantt
         let textoFecha = "";                            // Variable per emmagatzemar el text de la data que es mostrarà a la capçalera del Gantt
@@ -192,6 +154,24 @@
         const contenedorWidth = tabla?.parentElement?.clientWidth || document.documentElement.clientWidth;  // Obtenim l'ample del contenidor de la taula o l'ample de la finestra si no trobem el contenidor
         const anchoDisponible = Math.max(260, contenedorWidth - margenLateral - anchoNombre); // Ample disponible per al timeline
 
+        const PREREQ_CLIENT = new Set([
+            "FASE OBRA",
+            "AJUSTAT",
+            "ACTA",
+            "CES",
+            "IE",
+            "OBRA CIVIL",
+            "CES OC",
+            "ANULAR",
+            "PART",
+            "REQ ORG CLIENT",
+            "PTE ACT CLIENT",
+            "PTE ACT CLIENT",
+            "ESCREIX",
+            "REHABILITACIO",
+            "DIVISIÓ"
+        ])
+        
         datos.forEach(item => {                         // Iterem sobre cada prerequisit per determinar les dates mínimes i màximes del Gantt
 
             const ini = parseFechaES(item.inicio);          // Convertim la data d'inici del prerequisit a un objecte Date
@@ -207,6 +187,9 @@
               }
             if (!maxFecha || fin > maxFecha){
                 maxFecha = fin;}
+            if (dataCOBRA && (!maxFecha || dataCOBRA > maxFecha)) {
+                maxFecha = dataCOBRA;
+            }
         });
 
         const totalDias =                                   // Calculem el nombre total de dies entre la data mínima i la data màxima del Gantt
@@ -223,6 +206,7 @@
             1;
 
         const hoyOffset = Math.floor((hoy - minFecha) / 86400000);
+        const CObraOffset = dataCOBRA ? Math.floor((dataCOBRA - minFecha) / 86400000) : null;
         const pixDia = anchoDisponible / totalDias;                                // Calculem el nombre de píxels per dia del Gantt
 
                             // Creem la capçalera del Gantt amb les dates corresponents
@@ -269,6 +253,7 @@
 
             cabeceraHtml += `
                 <div
+                    title="Fecha de hoy: ${hoy.toLocaleDateString('es-ES')}"
                     style="
                         position:absolute;
                         left:${hoyOffset * pixDia}px;
@@ -280,6 +265,23 @@
                     ">
                 </div>
             `;// Afegim un div amb una línia vermella a la capçalera del Gantt per indicar la data actual
+        }
+
+        if (dataCOBRA) {
+            cabeceraHtml += `
+                <div
+                    title="Fecha entrega Carpeta de Obra: ${dataCOBRA.toLocaleDateString('es-ES')}"
+                    style="
+                        position:absolute;
+                        left:${CObraOffset * pixDia}px;
+                        top:0;
+                        bottom:0;
+                        width:3px;
+                        background:blue;
+                        z-index:1000;
+                    ">
+                </div>
+            `;// Afegim un div amb una línia blava a la capçalera del Gantt per indicar la data de la carpeta d'obra
         }
 
         cabeceraHtml += `
@@ -314,6 +316,20 @@
             if (item.cerrado) { // Si el prerequisit està tancat, utilitzem un color verd per a la barra del Gantt
                 color = "#34a853"
             }
+
+            const rallat = PREREQ_CLIENT.has(item.nombre);
+
+            let background = rallat
+                ? `repeating-linear-gradient(
+                    45deg,
+                    ${color},
+                    ${color} 8px,
+                    rgba(255,255,255,0.35) 8px,
+                    rgba(255,255,255,0.35) 12px
+                )`
+                : color;
+            ``
+
                             // Afegim un div amb la fila corresponent al prerequisit al Gantt
             filasHtml += `
 
@@ -343,7 +359,7 @@
                         style="
                             left:${offset * pixDia}px;
                             width:${duracion * pixDia}px;
-                            background:${color};
+                            background:${background};
                         "
                         title="
                         Inici: ${item.inicio}
@@ -507,3 +523,209 @@
         }
 
 })();
+
+// Modul de busqueda de carpeta de obra
+
+    (function () {
+        const LABEL = "Fecha entrega carpeta de obra";
+        const ONLY_OBJECT_API = "Constructive_project__c";
+        const STORAGE_KEY = "CONTROL_PLAZOS_FECHA_EOBRA";
+
+        // RESTAURAR CACHE tras F5
+        if (sessionStorage.getItem(STORAGE_KEY)) {
+            window.CONTROL_PLAZOS_FECHA_EOBRA = sessionStorage.getItem(STORAGE_KEY);
+
+        } else {
+            window.CONTROL_PLAZOS_FECHA_EOBRA = null;
+        }
+
+        const clean = s => s?.replace(/\u00A0/g, " ")
+        .replace(/[ \t\r\n]+/g, " ")
+        .trim() || "";
+
+        function isVisible(el) {
+            if (!el || el.nodeType !== 1) return false;
+            if (el.closest('[aria-hidden="true"]')) return false;
+            const r = el.getClientRects();
+            return r && r.length > 0;
+        }
+
+        function* walkDeep(root, cap = 20000) {
+            const stack = [root];
+            const seen = new Set();
+            let left = cap;
+
+            while (stack.length && left-- > 0) {
+                const n = stack.pop();
+                if (!n || seen.has(n)) continue;
+                seen.add(n);
+
+                yield n;
+
+                // ShadowRoot
+                try {
+                    if (n.shadowRoot) stack.push(n.shadowRoot);
+                } catch (_) {}
+
+                // DOM normal
+                const ch = n.children || n.childNodes;
+                if (ch) for (let i = 0; i < ch.length; i++) stack.push(ch[i]);
+            }
+        }
+
+        function deepQueryAll(root, selector, cap = 20000) {
+            const out = [];
+            for (const n of walkDeep(root, cap)) {
+                try {
+                    if (n.querySelectorAll) {
+                        const found = n.querySelectorAll(selector);
+                        for (const el of found) out.push(el);
+                    }
+                } catch (_) {}
+            }
+            return out;
+        }
+
+        function isRecordPageByUrl() {
+            return /\/lightning\/r\/Constructive_project__c\/[a-zA-Z0-9]{15,18}\/view/i.test(location.href);
+        }
+
+        function getRecordIdFromUrl() {
+            const m = location.href.match(/\/lightning\/r\/Constructive_project__c\/([a-zA-Z0-9]{15,18})\/view/i);
+            return m ? m[1] : null;
+        }
+
+        function getVisibleTabPanel() {
+            return (
+                document.querySelector('.slds-tabs_default__content[aria-hidden="false"]') ||
+                document.querySelector('.slds-tabs_scoped__content[aria-hidden="false"]') ||
+                document.querySelector('[role="tabpanel"][aria-hidden="false"]') ||
+                null
+            );
+        }
+
+        function getActiveRoot() {
+            const tabPanel = getVisibleTabPanel();
+            if (tabPanel) return tabPanel;
+            return document;
+        }
+
+        function getActiveRecordIdFromDom() {
+            const root = getActiveRoot();
+
+            const layout = root.querySelector('records-record-layout');
+            if (layout) {
+                const rid = layout.getAttribute('record-id') ||
+                      layout.getAttribute('data-recordid') ||
+                      layout.getAttribute('data-record-id');
+                if (rid) return rid;
+            }
+
+            const attrs = ['[record-id]', '[data-recordid]', '[data-record-id]'];
+            for (const sel of attrs) {
+                const el = root.querySelector(sel);
+                if (el) {
+                    const rid = el.getAttribute('record-id') ||
+                          el.getAttribute('data-recordid') ||
+                          el.getAttribute('data-record-id');
+                    if (rid) return rid;
+                }
+            }
+
+            const a = root.querySelector('a[href*="/lightning/r/Constructive_project__c/"]');
+            if (a) {
+                const m = a.getAttribute("href")?.match(/\/Constructive_project__c\/([a-zA-Z0-9]{15,18})\/view/i);
+                if (m) return m[1];
+            }
+            return null;
+        }
+
+        function getUrlKey() {
+            const rid = getRecordIdFromUrl();
+            if (rid) return ONLY_OBJECT_API + ":" + rid;
+            return null;
+        }
+
+        function getActiveDomKey() {
+            const rid = getActiveRecordIdFromDom();
+            if (rid) return ONLY_OBJECT_API + ":" + rid;
+            return null;
+        }
+
+        function normLabel(s) {
+            return clean(s)
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+        }
+
+        function readFechaCObra(root) {
+            const blocks = deepQueryAll(root, ".slds-form-element");
+            for (const el of blocks) {
+                if (!isVisible(el)) continue;
+
+                const lab = el.querySelector(".test-id__field-label, label");                
+                if (!lab || !isVisible(lab)) continue;
+                if (normLabel(lab.textContent) !== normLabel(LABEL)) continue;
+
+                const valRoot = el.querySelector(".test-id__field-value, .slds-form-element__control");
+                if (!valRoot || !isVisible(valRoot)) continue;
+                return clean(valRoot.innerText || valRoot.textContent || "") || null;
+            }
+            return null;
+        }
+
+        let scanToken = 0;
+
+        function scanForCurrent(reason) {
+
+            const urlKey = getUrlKey();
+            const domKey = getActiveDomKey();
+            if (!urlKey && !domKey && !isRecordPageByUrl()) return;
+
+            const token = ++scanToken;
+            const keyForLog = domKey || urlKey || "Record__c:?";
+
+            let attempts = 0;
+            const maxAttempts = 12;
+            const delayMs = 700;
+
+            function attempt() {
+                if (token !== scanToken) return;
+
+                attempts++;
+                const valor = readFechaCObra(getActiveRoot());
+
+                if (valor) {
+                    const prev = window.CONTROL_PLAZOS_FECHA_EOBRA;
+
+                    // Actualiza cache (aunque sea el mismo valor)
+                    window.CONTROL_PLAZOS_FECHA_EOBRA = valor;
+                    sessionStorage.setItem(STORAGE_KEY, valor);
+                    return;
+                }
+                if (attempts < maxAttempts) setTimeout(attempt, delayMs);
+            }
+            attempt();
+        }
+
+        let lastUrlKey = null;
+        let lastDomKey = null;
+
+        setInterval(() => {
+            const u = getUrlKey();
+            const d = getActiveDomKey();
+            if ((u && u !== lastUrlKey) || (d && d !== lastDomKey)) {
+                lastUrlKey = u;
+                lastDomKey = d;
+                scanForCurrent("cambio contexto");
+            }
+        }, 800);
+
+        setTimeout(() => {
+            lastUrlKey = getUrlKey();
+            lastDomKey = getActiveDomKey();
+            scanForCurrent("inicio");
+        }, 2000);
+
+    })();
