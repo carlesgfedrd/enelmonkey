@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        0.9.9
+// @version        1.0.0
 // ==/UserScript==
 
 (function() {
@@ -125,13 +125,13 @@
         return datos;
     }
 
-    function getGanttSignature(datos) {
+    function getGanttSignature(datos) { // Funció per obtenir una signatura única de les dades del Gantt per comparar si han canviat
         return datos
             .map(item => `${item.nombre}|${item.inicio}|${item.prevista}|${item.realFin}`)
             .join('||');
     }
 
-    function getCurrentPageKey() {
+    function getCurrentPageKey() {  // Funció per obtenir una clau única de la pàgina actual per comparar si hem canviat de pàgina
         return `${window.location.pathname}${window.location.search}${window.location.hash}`;
     }
 
@@ -154,22 +154,35 @@
         const contenedorWidth = tabla?.parentElement?.clientWidth || document.documentElement.clientWidth;  // Obtenim l'ample del contenidor de la taula o l'ample de la finestra si no trobem el contenidor
         const anchoDisponible = Math.max(260, contenedorWidth - margenLateral - anchoNombre); // Ample disponible per al timeline
 
-        const PREREQ_CLIENT = new Set([
-            "FASE OBRA",
-            "AJUSTAT",
+        const PREREQ_CLIENT = new Set([     // Conjunt de prerequisits que es mostraran amb un patró ratllat a la barra del Gantt
             "ACTA",
+            "AJUSTAT",
+            "ANULAR",
             "CES",
+            "CES OC",
+            "DIVISIÓ",
+            "DIVISIO",
+            "ESCREIX",
+            "ESTUDI - CAR",
+            "ESTUDI - CLIENT",
+            "ESTUDI - ERROR",
+            "ESTUDI - EXE",
+            "ESTUDI - PART",
+            "ESTUDI - PER",
+            "ESTUDI - PLANOL",
+            "ESTUDI - SO",
+            "ESTUDI",
+            "FASE OBRA",            
             "IE",
             "OBRA CIVIL",
-            "CES OC",
-            "ANULAR",
             "PART",
-            "REQ ORG CLIENT",
+            "PART - Pendiente acciones cliente",
             "PTE ACT CLIENT",
-            "PTE ACT CLIENT",
-            "ESCREIX",
             "REHABILITACIO",
-            "DIVISIÓ"
+            "REQ ORG CLIENT",
+            "Entrega Justificante de pago", 
+            "Aceptación WEB pte. pago factura",
+            "Pago pendiente cliente"
         ])
         
         datos.forEach(item => {                         // Iterem sobre cada prerequisit per determinar les dates mínimes i màximes del Gantt
@@ -185,9 +198,9 @@
             if (!minFecha || ini < minFecha){               // Si no tenim una data mínima o la data d'inici del prerequisit és anterior a la data mínima actual, actualitzem la data mínima
                 minFecha = ini;
               }
-            if (!maxFecha || fin > maxFecha){
+            if (!maxFecha || fin > maxFecha){               // Si no tenim una data màxima o la data de finalització del prerequisit és posterior a la data màxima actual, actualitzem la data màxima
                 maxFecha = fin;}
-            if (dataCOBRA && (!maxFecha || dataCOBRA > maxFecha)) {
+            if (dataCOBRA && (!maxFecha || dataCOBRA > maxFecha)) { // o si la data d'entrega de Carpeta d'Obra és posterior a la data màxima actual, actualitzem la data màxima
                 maxFecha = dataCOBRA;
             }
         });
@@ -200,7 +213,7 @@
         const SaltoFecha =                                  // Determinem el salt de dates que es mostrarà a la capçalera del Gantt en funció del nombre total de dies
             totalDias > 1095 ? 365 :
             totalDias > 730 ? 90 :
-            totalDias > 365 ? 20 :
+            totalDias > 365 ? 30 :
             totalDias > 100 ? 7 :
             totalDias > 50 ? 3 :
             1;
@@ -237,11 +250,13 @@
                     style="
                         position:absolute;
                         left:${i*pixDia}px;
-                        top:0;
+                        top:35;
                         width:20px;
                         font-size:10px;
                         text-align:center;
                         border-left:1px solid #ccc;
+                        transform-origin: left bottom;
+                        z-index:1000;
                     "
                 >
                     ${textoFecha}
@@ -317,9 +332,9 @@
                 color = "#34a853"
             }
 
-            const rallat = PREREQ_CLIENT.has(item.nombre);
+            const rallat = PREREQ_CLIENT.has(item.nombre);  // Es comprova si el prerequisit es pendent de client per possar-lo com a rallat
 
-            let background = rallat
+            let background = rallat     //Si el prerequisit es rallat, fa ralla, sino, agafa color
                 ? `repeating-linear-gradient(
                     45deg,
                     ${color},
@@ -412,6 +427,10 @@
         margin-bottom:10px;
     }
 
+    .fila:first-child{
+        margin-top:20px;
+    }
+
     .nombre{
         width:${anchoNombre}px;
         min-width:60px;
@@ -443,9 +462,36 @@
     <p>
     <h2>Diagrama Gantt</h2>
 
-    <p>
-    🟢 Cerrado |
-    🔴 Pendiente
+    <p style="margin-bottom:10px;">
+    <span style="color:#34a853;">●</span> Cerrado |
+    <span style="color:#e53935;">●</span> Pendiente |
+    <span style="color:#9e9e9e;">●</span> Hueco entre pre-requisitos |
+    <span style="
+        display:inline-block;
+        width:16px;
+        height:12px;
+        background:repeating-linear-gradient(
+            45deg,
+            #34a853,
+            #34a853 4px,
+            rgba(255,255,255,0.35) 4px,
+            rgba(255,255,255,0.35) 8px
+        );
+    "></span>
+    <span style="
+        display:inline-block;
+        width:16px;
+        height:12px;
+        background:repeating-linear-gradient(
+            45deg,
+            #e53935,
+            #e53935 4px,
+            rgba(255,255,255,0.35) 4px,
+            rgba(255,255,255,0.35) 8px
+        );
+    
+    "></span> Cliente (cerrado o pendiente)
+
     </p>
 
     ${cabeceraHtml}
@@ -526,34 +572,34 @@
 
 // Modul de busqueda de carpeta de obra
 
-    (function () {
-        const LABEL = "Fecha entrega carpeta de obra";
-        const ONLY_OBJECT_API = "Constructive_project__c";
-        const STORAGE_KEY = "CONTROL_PLAZOS_FECHA_EOBRA";
+(function () {
+        const LABEL = "Fecha entrega carpeta de obra";  // Etiqueta del camp de data d'entrega de la carpeta d'obra
+        const ONLY_OBJECT_API = "Constructive_project__c"; // Nom de l'objecte Salesforce que conté el camp de data d'entrega de la carpeta d'obra
+        const STORAGE_KEY = "CONTROL_PLAZOS_FECHA_EOBRA";   // Clau per emmagatzemar la data d'entrega de la carpeta d'obra al sessionStorage
 
-        // RESTAURAR CACHE tras F5
-        if (sessionStorage.getItem(STORAGE_KEY)) {
+        // Recuperem la data d'entrega de la carpeta d'obra del sessionStorage si existeix, i la guardem a una variable global per a ser utilitzada en altres parts del codi
+        if (sessionStorage.getItem(STORAGE_KEY)) {  
             window.CONTROL_PLAZOS_FECHA_EOBRA = sessionStorage.getItem(STORAGE_KEY);
 
         } else {
             window.CONTROL_PLAZOS_FECHA_EOBRA = null;
         }
 
-        const clean = s => s?.replace(/\u00A0/g, " ")
+        const clean = s => s?.replace(/\u00A0/g, " ")   // Reemplaça els espais durs (non-breaking spaces) per espais normals, elimina salts de línia i tabulacions, i retalla els espais innecessaris al principi i al final de la cadena
         .replace(/[ \t\r\n]+/g, " ")
         .trim() || "";
 
-        function isVisible(el) {
+        function isVisible(el) {    // Funció per comprovar si un element és visible a la pàgina (té un rectangle de client vàlid i no està dins d'un element amb aria-hidden="true")
             if (!el || el.nodeType !== 1) return false;
             if (el.closest('[aria-hidden="true"]')) return false;
             const r = el.getClientRects();
             return r && r.length > 0;
         }
 
-        function* walkDeep(root, cap = 20000) {
-            const stack = [root];
-            const seen = new Set();
-            let left = cap;
+        function* walkDeep(root, cap = 20000) { // Funció generadora per recórrer tots els elements del DOM a partir d'un element arrel, incloent els Shadow DOM, fins a un límit de cap elements (per evitar bucles infinits)
+            const stack = [root];   // Inicialitzem una pila amb l'element arrel per començar a recórrer el DOM
+            const seen = new Set(); // Inicialitzem un conjunt per emmagatzemar els elements ja visitats i evitar bucles infinits
+            let left = cap;         // Inicialitzem un comptador per limitar el nombre d'elements a recórrer i evitar bucles infinits
 
             while (stack.length && left-- > 0) {
                 const n = stack.pop();
@@ -728,4 +774,4 @@
             scanForCurrent("inicio");
         }, 2000);
 
-    })();
+})();
