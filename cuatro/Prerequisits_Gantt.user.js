@@ -5,7 +5,7 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        1.0.2
+// @version        1.1.0
 // @run-at         document-idle
 // ==/UserScript==
 
@@ -14,14 +14,60 @@
     let lastPageKey = null;
     const REFRESH_INTERVAL_MS = 1000;
     const REFRESH_DEBOUNCE_MS = 100;
+    const WAITING_TIMEOUT_MS = 8000;
     let refreshTimeout = null;
+    let waitingSince = Date.now();
+    let lastObservedPageKey = null;
 
     function scheduleGanttRefresh() {
         clearTimeout(refreshTimeout);
         refreshTimeout = setTimeout(() => {
             refreshTimeout = null;
-            mostrarGanttUnaVez();
+            runGanttCheck();
         }, REFRESH_DEBOUNCE_MS);
+    }
+
+    function runGanttCheck() {
+        try {
+            const pageKey = getCurrentPageKey();
+            if (pageKey !== lastObservedPageKey) {
+                lastObservedPageKey = pageKey;
+                waitingSince = Date.now();
+            }
+
+            mostrarGanttUnaVez();
+
+            const isGanttPage = location.pathname.includes("/Prerequisites__r/") &&
+                location.pathname.endsWith("/view");
+            if (!isGanttPage) {
+                document.getElementById("ganttLoadStatus")?.remove();
+                return;
+            }
+
+            if (findGanttContainer()) {
+                document.getElementById("ganttLoadStatus")?.remove();
+            } else if (Date.now() - waitingSince >= WAITING_TIMEOUT_MS) {
+                setGanttLoadStatus("Gantt is waiting for the prerequisites table and its data.");
+            }
+        } catch (error) {
+            console.error("[Prerequisits Gantt] Rendering failed:", error);
+            setGanttLoadStatus("Gantt failed to render. Check the browser console for details.", true);
+        }
+    }
+
+    function setGanttLoadStatus(message, isError = false) {
+        let status = document.getElementById("ganttLoadStatus");
+        if (!status && document.body) {
+            status = document.createElement("div");
+            status.id = "ganttLoadStatus";
+            status.style.cssText = "position:fixed;right:12px;bottom:12px;z-index:2147483647;padding:8px 12px;border-radius:4px;font:13px Arial,sans-serif;color:#fff;box-shadow:0 2px 8px #0004;";
+            document.body.appendChild(status);
+        }
+        if (status) {
+            const color = isError ? "#b71c1c" : "#555";
+            if (status.textContent !== message) status.textContent = message;
+            if (status.style.backgroundColor !== color) status.style.backgroundColor = color;
+        }
     }
 
     const pageObserver = new MutationObserver(scheduleGanttRefresh);
@@ -29,10 +75,10 @@
         pageObserver.observe(document.documentElement, { childList: true, subtree: true });
     }
 
-    mostrarGanttUnaVez();
+    runGanttCheck();
 
     const refreshTimer = setInterval(() => {
-        mostrarGanttUnaVez();
+        runGanttCheck();
     }, REFRESH_INTERVAL_MS);
 
     window.addEventListener('load', scheduleGanttRefresh, { once: true });
@@ -45,15 +91,47 @@
         pageObserver.disconnect();
     });
 
+    function deepQueryAll(root, selector) {
+        const results = [];
+        const stack = [root];
+        const visited = new Set();
+
+        while (stack.length) {
+            const node = stack.pop();
+            if (!node || visited.has(node)) continue;
+            visited.add(node);
+
+            if (node.nodeType === Node.ELEMENT_NODE && node.matches(selector)) {
+                results.push(node);
+            }
+
+            if (node.shadowRoot) stack.push(node.shadowRoot);
+            for (const child of node.childNodes || []) {
+                stack.push(child);
+            }
+        }
+
+        return results;
+    }
+
+    function findGanttTable() {
+        return deepQueryAll(document, "span[title='Nombre del Pre-requisito']")
+            .map(header => header.closest("table"))
+            .find(Boolean) || null;
+    }
+
+    function findGanttContainer() {
+        return deepQueryAll(document, "#ganttContainer")[0] || null;
+    }
+
     function obtenerDatosGantt() {  // Funció per obtenir les dades del Gantt de la taula de prerequisits
 
         const datos = []; // Array per emmagatzemar les dades del Gantt
-        const thTitle = getElementsByXPath("//span[@title='Nombre del Pre-requisito']"); // Obtenim el primer element th amb el títol "Nombre del Pre-requisito"
-        const tabla = thTitle[0]?.closest('table'); // Obtenim la taula que conté aquest element th
+        const tabla = findGanttTable(); // Obtenim la taula que conté aquest element th
         if (!tabla) return datos;
 
         const getColumnIndex = title => {
-            const header = getElementsByXPath(`*//span[@title='${title}']`, tabla)[0];
+            const header = deepQueryAll(tabla, `span[title="${title}"]`)[0];
             return header?.closest('th')?.cellIndex ?? -1;
         };
         const posNombre = getColumnIndex("Nombre del Pre-requisito");
@@ -62,7 +140,7 @@
         const posRealFin = getColumnIndex("Fecha real fin");
         if ([posNombre, posInicio, posFin, posRealFin].some(index => index < 0)) return datos;
 
-        const filas = getElementsByXPath("*//a[contains(@href,'/a2c')]", tabla); // Obtenim totes les files que contenen un enllaç amb "/a2c" a la taula
+        const filas = deepQueryAll(tabla, "a[href*='/a2c']"); // Obtenim totes les files que contenen un enllaç amb "/a2c" a la taula
 
         for (let i = 0; i < filas.length; i++) { //Entrem a cada prerequisit
 
@@ -171,7 +249,7 @@
 
         datos = datos || obtenerDatosGantt();
         datos = calcularGaps(datos);
-        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table');
+        const tabla = findGanttTable();
         if (!tabla?.parentElement) return false;
 
         const hoy = new Date();                         // Obtenim la data actual
@@ -539,7 +617,7 @@
     </html>
     `;
 
-    let contenedor = document.getElementById("ganttContainer"); // Obtenim l'element contenedor del Gantt si ja existeix
+    let contenedor = findGanttContainer(); // Obtenim l'element contenedor del Gantt si ja existeix
 
     if (!contenedor) {  // Si no existeix l'element contenedor, el creem i l'afegim a la pàgina
         contenedor = document.createElement("div"); // Creem un nou element div per contenir el Gantt
@@ -564,7 +642,7 @@
         const pageKey = getCurrentPageKey();
 
         if (!url.includes("/Prerequisites__r/") || !url.includes("/view")) {
-            const contenedor = document.getElementById("ganttContainer");
+            const contenedor = findGanttContainer();
             if (contenedor) {
                 contenedor.remove();
             }
@@ -575,7 +653,7 @@
 
         const datos = obtenerDatosGantt();  // Obtenim les dades del Gantt de la taula de prerequisits
         if (!datos.length) {
-            const contenedor = document.getElementById("ganttContainer");
+            const contenedor = findGanttContainer();
             if (contenedor) {
                 contenedor.remove();
             }
@@ -585,8 +663,8 @@
         }
 
         const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
-        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table');
-        const contenedor = document.getElementById("ganttContainer");
+        const tabla = findGanttTable();
+        const contenedor = findGanttContainer();
         if (pageKey === lastPageKey && signature === lastGanttSignature &&
             contenedor?.isConnected && contenedor.parentElement === tabla?.parentElement) {
             return;
@@ -597,15 +675,6 @@
             lastGanttSignature = signature; // Actualitzem la signatura de les dades del Gantt per a la propera comparació
         }
     }
-
-    function getElementsByXPath(xpath, parent) {
-            let results = [];
-            let query = document.evaluate(xpath, parent || document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-            for (let i = 0, length = query.snapshotLength; i < length; ++i) {
-                results.push(query.snapshotItem(i));
-            }
-            return results;
-        }
 
 })();
 
