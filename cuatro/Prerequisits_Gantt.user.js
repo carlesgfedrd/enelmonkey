@@ -5,38 +5,70 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        1.0.1
+// @version        1.0.2
+// @run-at         document-idle
 // ==/UserScript==
 
 (function() {
     let lastGanttSignature = null;
     let lastPageKey = null;
     const REFRESH_INTERVAL_MS = 1000;
+    const REFRESH_DEBOUNCE_MS = 100;
+    let refreshTimeout = null;
+
+    function scheduleGanttRefresh() {
+        clearTimeout(refreshTimeout);
+        refreshTimeout = setTimeout(() => {
+            refreshTimeout = null;
+            mostrarGanttUnaVez();
+        }, REFRESH_DEBOUNCE_MS);
+    }
+
+    const pageObserver = new MutationObserver(scheduleGanttRefresh);
+    if (document.documentElement) {
+        pageObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
+
+    mostrarGanttUnaVez();
 
     const refreshTimer = setInterval(() => {
         mostrarGanttUnaVez();
     }, REFRESH_INTERVAL_MS);
 
+    window.addEventListener('load', scheduleGanttRefresh, { once: true });
+    window.addEventListener('popstate', scheduleGanttRefresh);
+    window.addEventListener('hashchange', scheduleGanttRefresh);
+
     window.addEventListener('beforeunload', () => {
         clearInterval(refreshTimer);
+        clearTimeout(refreshTimeout);
+        pageObserver.disconnect();
     });
 
     function obtenerDatosGantt() {  // Funció per obtenir les dades del Gantt de la taula de prerequisits
 
         const datos = []; // Array per emmagatzemar les dades del Gantt
         const thTitle = getElementsByXPath("//span[@title='Nombre del Pre-requisito']"); // Obtenim el primer element th amb el títol "Nombre del Pre-requisito"
-        let tabla = thTitle[0].closest('table'); // Obtenim la taula que conté aquest element th
-        const posNombre = getElementsByXPath("*//span[@title='Nombre del Pre-requisito']", tabla)[0].closest('th').cellIndex; // Obtenim la posició de la columna "Nombre del Pre-requisito"
-        const posInicio = getElementsByXPath("*//span[@title='Fecha de inicio']", tabla)[0].closest('th').cellIndex; // Obtenim la posició de la columna "Fecha de inicio"
-        const posFin = getElementsByXPath("*//span[@title='Fecha prevista fin']", tabla)[0].closest('th').cellIndex; // Obtenim la posició de la columna "Fecha prevista fin"
-        const posRealFin = getElementsByXPath("*//span[@title='Fecha real fin']", tabla)[0].closest('th').cellIndex; // Obtenim la posició de la columna "Fecha real fin"
+        const tabla = thTitle[0]?.closest('table'); // Obtenim la taula que conté aquest element th
+        if (!tabla) return datos;
+
+        const getColumnIndex = title => {
+            const header = getElementsByXPath(`*//span[@title='${title}']`, tabla)[0];
+            return header?.closest('th')?.cellIndex ?? -1;
+        };
+        const posNombre = getColumnIndex("Nombre del Pre-requisito");
+        const posInicio = getColumnIndex("Fecha de inicio");
+        const posFin = getColumnIndex("Fecha prevista fin");
+        const posRealFin = getColumnIndex("Fecha real fin");
+        if ([posNombre, posInicio, posFin, posRealFin].some(index => index < 0)) return datos;
+
         const filas = getElementsByXPath("*//a[contains(@href,'/a2c')]", tabla); // Obtenim totes les files que contenen un enllaç amb "/a2c" a la taula
 
         for (let i = 0; i < filas.length; i++) { //Entrem a cada prerequisit
 
             const fila = filas[i].closest('tr'); // Obtenim la fila que conté aquest enllaç
 
-            if (!fila) continue;    // Si no trobem la fila, continuem amb la següent iteració
+            if (!fila || fila.children.length <= Math.max(posNombre, posInicio, posFin, posRealFin)) continue;
 
             const nombre = fila.children[posNombre].innerText.split("\n")[0].trim();    // Obtenim el nom del prerequisit i eliminem els salts de línia i espais innecessaris
             const inicio = fila.children[posInicio].innerText.trim();       // Obtenim la data d'inici del prerequisit i eliminem els salts de línia i espais innecessaris
@@ -139,6 +171,8 @@
 
         datos = datos || obtenerDatosGantt();
         datos = calcularGaps(datos);
+        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table');
+        if (!tabla?.parentElement) return false;
 
         const hoy = new Date();                         // Obtenim la data actual
         const dataCOBRA = parseFechaES(window.CONTROL_PLAZOS_FECHA_EOBRA); // Obtenim la data d'entrega de la carpeta de obra des del cache global
@@ -150,7 +184,6 @@
         const anchoNombre = Math.max(80, maxNombre * 8);    // Calculem l'ample de la columna de noms
         const margenLateral = 60;                          // Marges totals (padding esquerra+dreta + espai dret extra)
 
-        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table'); // Obtenim la taula que conté el primer element th amb el títol "Nombre del Pre-requisito"
         const contenedorWidth = tabla?.parentElement?.clientWidth || document.documentElement.clientWidth;  // Obtenim l'ample del contenidor de la taula o l'ample de la finestra si no trobem el contenidor
         const anchoDisponible = Math.max(260, contenedorWidth - margenLateral - anchoNombre); // Ample disponible per al timeline
 
@@ -515,14 +548,14 @@
         contenedor.style.overflowX = "hidden";  // Afegim un desbordament horitzontal ocult a l'element contenedor per evitar que el Gantt es desbordi de la pàgina
         contenedor.style.maxWidth = "100%"; // Afegim un ample màxim del 100% a l'element contenedor per evitar que el Gantt es desbordi de la pàgina
 
-        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest("table"); // Obtenim la taula que conté el primer element th amb el títol "Nombre del Pre-requisito"
+    }
 
-        if (!tabla) return; // Si no trobem la taula, sortim de la funció
-
+    if (contenedor.parentElement !== tabla.parentElement) {
         tabla.parentElement.appendChild(contenedor);    // Afegim l'element contenedor a la pàgina després de la taula de prerequisits
-        }
+    }
 
-        contenedor.innerHTML = html;    // Afegim el codi HTML del Gantt a l'element contenedor
+    contenedor.innerHTML = html;    // Afegim el codi HTML del Gantt a l'element contenedor
+    return true;
     }
 
     function mostrarGanttUnaVez() { // Funció per mostrar el Gantt només si estem a la pàgina de prerequisits i la taula ha canviat
@@ -552,13 +585,17 @@
         }
 
         const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
-        if (pageKey === lastPageKey && signature === lastGanttSignature) {
+        const tabla = getElementsByXPath("//span[@title='Nombre del Pre-requisito']")[0]?.closest('table');
+        const contenedor = document.getElementById("ganttContainer");
+        if (pageKey === lastPageKey && signature === lastGanttSignature &&
+            contenedor?.isConnected && contenedor.parentElement === tabla?.parentElement) {
             return;
         }
 
-        lastPageKey = pageKey; // Actualitzem la clau de pàgina per a la propera comparació
-        lastGanttSignature = signature; // Actualitzem la signatura de les dades del Gantt per a la propera comparació
-        mostrarGantt(datos);    // Mostrem el Gantt amb les dades obtingudes
+        if (mostrarGantt(datos)) {
+            lastPageKey = pageKey; // Actualitzem la clau de pàgina per a la propera comparació
+            lastGanttSignature = signature; // Actualitzem la signatura de les dades del Gantt per a la propera comparació
+        }
     }
 
     function getElementsByXPath(xpath, parent) {
