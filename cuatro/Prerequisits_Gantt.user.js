@@ -5,20 +5,23 @@
 // @match          http*://*.force.com/*
 // @match          http*://*.salesforce.com/*
 // @author         Adrian Sanchez Martinez (adrian.sanchez@enel.com)
-// @version        1.1.0
+// @version        1.1.1
 // @run-at         document-idle
 // ==/UserScript==
 
+// S'executa quan el document inicial ja s'ha analitzat; Salesforce encara pot
+// continuar carregant i actualitzant el contingut de la pàgina després.
 (function() {
     let lastGanttSignature = null;
     let lastPageKey = null;
-    const REFRESH_INTERVAL_MS = 1000;
-    const REFRESH_DEBOUNCE_MS = 100;
-    const WAITING_TIMEOUT_MS = 8000;
+    const REFRESH_INTERVAL_MS = 1000; // Comprovació periòdica de seguretat si algun canvi no activa l'observador.
+    const REFRESH_DEBOUNCE_MS = 100; // Agrupa les moltes mutacions que Salesforce pot generar seguides.
+    const WAITING_TIMEOUT_MS = 8000; // Temps abans d'indicar que encara no s'ha trobat la taula.
     let refreshTimeout = null;
     let waitingSince = Date.now();
     let lastObservedPageKey = null;
 
+    // Programa una comprovació breu després que Salesforce modifiqui el DOM.
     function scheduleGanttRefresh() {
         clearTimeout(refreshTimeout);
         refreshTimeout = setTimeout(() => {
@@ -27,11 +30,13 @@
         }, REFRESH_DEBOUNCE_MS);
     }
 
+    // Comprova la ruta, intenta dibuixar el Gantt i mostra l'estat si cal.
     function runGanttCheck() {
         try {
             const pageKey = getCurrentPageKey();
             if (pageKey !== lastObservedPageKey) {
                 lastObservedPageKey = pageKey;
+                // Reinicia el termini quan es navega a una pàgina de prerequisits diferent.
                 waitingSince = Date.now();
             }
 
@@ -47,14 +52,17 @@
             if (findGanttContainer()) {
                 document.getElementById("ganttLoadStatus")?.remove();
             } else if (Date.now() - waitingSince >= WAITING_TIMEOUT_MS) {
+                // Diferencia una taula que encara no ha aparegut d'un error de JavaScript.
                 setGanttLoadStatus("Gantt is waiting for the prerequisites table and its data.");
             }
         } catch (error) {
+            // Evita que una excepció quedi amagada i deixa una pista visible a la pàgina.
             console.error("[Prerequisits Gantt] Rendering failed:", error);
             setGanttLoadStatus("Gantt failed to render. Check the browser console for details.", true);
         }
     }
 
+    // Crea o actualitza l'indicador visible d'espera o d'error.
     function setGanttLoadStatus(message, isError = false) {
         let status = document.getElementById("ganttLoadStatus");
         if (!status && document.body) {
@@ -70,6 +78,7 @@
         }
     }
 
+    // Salesforce és una aplicació dinàmica: observa els canvis del DOM per tornar-ho a provar.
     const pageObserver = new MutationObserver(scheduleGanttRefresh);
     if (document.documentElement) {
         pageObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -77,20 +86,24 @@
 
     runGanttCheck();
 
+    // La comprovació periòdica cobreix canvis d'estat de Salesforce que no generin mutacions observables.
     const refreshTimer = setInterval(() => {
         runGanttCheck();
     }, REFRESH_INTERVAL_MS);
 
+    // Reintenta també després de la càrrega inicial i de canvis de navegació del navegador.
     window.addEventListener('load', scheduleGanttRefresh, { once: true });
     window.addEventListener('popstate', scheduleGanttRefresh);
     window.addEventListener('hashchange', scheduleGanttRefresh);
 
+    // Atura els observadors i temporitzadors quan es descarrega la pàgina.
     window.addEventListener('beforeunload', () => {
         clearInterval(refreshTimer);
         clearTimeout(refreshTimeout);
         pageObserver.disconnect();
     });
 
+    // Recorre el DOM i els Shadow DOM oberts, que els selectors normals no travessen.
     function deepQueryAll(root, selector) {
         const results = [];
         const stack = [root];
@@ -114,6 +127,7 @@
         return results;
     }
 
+    // Troba la taula de prerequisits encara que Salesforce l'hagi renderitzat dins d'un Shadow DOM.
     function findGanttTable() {
         return deepQueryAll(document, "span[title='Nombre del Pre-requisito']")
             .map(header => header.closest("table"))
@@ -124,6 +138,7 @@
         return deepQueryAll(document, "#ganttContainer")[0] || null;
     }
 
+    // Extreu files i columnes de la taula trobada, inclosos els elements dins de Shadow DOM.
     function obtenerDatosGantt() {  // Funció per obtenir les dades del Gantt de la taula de prerequisits
 
         const datos = []; // Array per emmagatzemar les dades del Gantt
@@ -138,6 +153,7 @@
         const posInicio = getColumnIndex("Fecha de inicio");
         const posFin = getColumnIndex("Fecha prevista fin");
         const posRealFin = getColumnIndex("Fecha real fin");
+        // Si Salesforce encara no ha pintat totes les capçaleres, es deixa que el següent intent ho torni a provar.
         if ([posNombre, posInicio, posFin, posRealFin].some(index => index < 0)) return datos;
 
         const filas = deepQueryAll(tabla, "a[href*='/a2c']"); // Obtenim totes les files que contenen un enllaç amb "/a2c" a la taula
@@ -628,6 +644,7 @@
 
     }
 
+    // Salesforce pot substituir el node pare durant un render; recol·loca el contenidor al costat de la taula actual.
     if (contenedor.parentElement !== tabla.parentElement) {
         tabla.parentElement.appendChild(contenedor);    // Afegim l'element contenedor a la pàgina després de la taula de prerequisits
     }
@@ -665,6 +682,7 @@
         const signature = getGanttSignature(datos); // Obtenim la signatura de les dades del Gantt per comparar si han canviat
         const tabla = findGanttTable();
         const contenedor = findGanttContainer();
+        // Si dades i pàgina no han canviat, només s'omet el dibuix quan el contenidor continua connectat al pare correcte.
         if (pageKey === lastPageKey && signature === lastGanttSignature &&
             contenedor?.isConnected && contenedor.parentElement === tabla?.parentElement) {
             return;
